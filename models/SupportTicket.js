@@ -1,4 +1,3 @@
-
 import mongoose from "mongoose";
 
 const messageSchema = new mongoose.Schema(
@@ -10,7 +9,11 @@ const messageSchema = new mongoose.Schema(
     },
     message: {
       type: String,
-      required: true,
+      default: "",
+    },
+    image: {
+      type: String, // Cloudinary URL
+      default: "",
     },
     createdAt: {
       type: Date,
