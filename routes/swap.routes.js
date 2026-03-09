@@ -6,68 +6,63 @@ import authMiddleware from "../middleware/auth.js";
 const router = express.Router();
 
 /* ================= PRICE CACHE ================= */
-let cachedPrices = null;
+
+let cachedPrices = {};
 let lastFetch = 0;
 
-async function getPrices() {
-  const now = Date.now();
+/* ===== FETCH LIVE PRICES ===== */
 
-  // Cache prices for 30 seconds
-  if (cachedPrices && now - lastFetch < 30000) {
-    return cachedPrices;
-  }
-
+async function fetchPrices() {
   try {
-    const prices = {};
-
-    /* ===== CRYPTO (CoinGecko) ===== */
-    const cryptoRes = await axios.get(
-      "https://api.coingecko.com/api/v3/simple/price",
-      {
+    const [cryptoRes, goldRes, silverRes] = await Promise.all([
+      axios.get("https://api.coingecko.com/api/v3/simple/price", {
         params: {
-          ids: "bitcoin,ethereum,tether,solana",
+          ids: "bitcoin,ethereum,solana",
           vs_currencies: "usd",
         },
-      }
-    );
+      }),
 
-    prices.BTC = cryptoRes.data.bitcoin.usd;
-    prices.ETH = cryptoRes.data.ethereum.usd;
-    prices.SOL = cryptoRes.data.solana.usd;
-    prices.USDT = 1;
+      axios.get("https://www.goldapi.io/api/XAU/USD", {
+        headers: { "x-access-token": process.env.GOLD_API_KEY },
+      }),
 
-    /* ===== METALS (GoldAPI) ===== */
-    const goldRes = await axios.get("https://www.goldapi.io/api/XAU/USD", {
-      headers: {
-        "x-access-token": process.env.GOLD_API_KEY,
-      },
-    });
+      axios.get("https://www.goldapi.io/api/XAG/USD", {
+        headers: { "x-access-token": process.env.GOLD_API_KEY },
+      }),
+    ]);
 
-    const silverRes = await axios.get("https://www.goldapi.io/api/XAG/USD", {
-      headers: {
-        "x-access-token": process.env.GOLD_API_KEY,
-      },
-    });
-
-    prices.XAU = goldRes.data.price;
-    prices.XAG = silverRes.data.price;
+    const prices = {
+      BTC: cryptoRes.data.bitcoin.usd,
+      ETH: cryptoRes.data.ethereum.usd,
+      SOL: cryptoRes.data.solana.usd,
+      USDT: 1,
+      XAU: goldRes.data.price,
+      XAG: silverRes.data.price,
+    };
 
     cachedPrices = prices;
-    lastFetch = now;
+    lastFetch = Date.now();
 
-    console.log("LIVE PRICES:", prices);
-
-    return prices;
+    console.log("Prices Updated:", prices);
   } catch (err) {
-    console.error("Price Fetch Error:", err.response?.data || err.message);
-    throw new Error("Failed to fetch live prices");
+    console.error("Price Fetch Error:", err.message);
   }
 }
 
+/* ===== AUTO UPDATE PRICES EVERY 60s ===== */
+
+setInterval(fetchPrices, 60000);
+
+/* ===== INITIAL FETCH WHEN SERVER STARTS ===== */
+
+fetchPrices();
+
 /* ================= SWAP ================= */
+
 router.post("/swap", authMiddleware, async (req, res) => {
   try {
-    const { fromAsset, toAsset, amount } = req.body;
+    const { fromAsset, toAsset } = req.body;
+    const amount = Number(req.body.amount);
 
     if (!fromAsset || !toAsset || !amount)
       return res.status(400).json({ message: "Missing data" });
@@ -75,21 +70,24 @@ router.post("/swap", authMiddleware, async (req, res) => {
     if (fromAsset === toAsset)
       return res.status(400).json({ message: "Cannot swap same asset" });
 
-    if (Number(amount) <= 0)
+    if (amount <= 0)
       return res.status(400).json({ message: "Invalid amount" });
 
     const user = await User.findById(req.user.id);
-    if (!user) return res.status(404).json({ message: "User not found" });
+
+    if (!user)
+      return res.status(404).json({ message: "User not found" });
 
     if (!user.balance[fromAsset] || user.balance[fromAsset] < amount)
       return res.status(400).json({ message: "Insufficient balance" });
 
-    const prices = await getPrices();
+    const prices = cachedPrices;
 
     if (!prices[fromAsset] || !prices[toAsset])
       return res.status(400).json({ message: "Invalid asset" });
 
     /* ===== UNIVERSAL CONVERSION ===== */
+
     const usdValue = amount * prices[fromAsset];
     const receiveAmount = usdValue / prices[toAsset];
 
@@ -104,10 +102,13 @@ router.post("/swap", authMiddleware, async (req, res) => {
       received: receiveAmount,
       rate: prices[fromAsset] / prices[toAsset],
       balance: user.balance,
+      prices,
+      lastUpdate: lastFetch,
     });
+
   } catch (err) {
     console.error("Swap Error:", err.message);
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: "Swap failed" });
   }
 });
 
