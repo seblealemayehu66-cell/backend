@@ -5,7 +5,7 @@ import authMiddleware from "../middleware/auth.js";
 
 const router = express.Router();
 
-/* ================= PRICE CACHE ================= */
+/* ================= PRICE CACHE ================= *
 
 let cachedPrices = {};
 let lastFetch = 0;
