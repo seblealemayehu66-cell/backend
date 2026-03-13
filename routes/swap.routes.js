@@ -6,12 +6,14 @@ import authMiddleware from "../middleware/auth.js";
 const router = express.Router();
 
 /* ================= PRICE CACHE ================= */
-
-let cachedPrices = {};
+let cachedPrices = {
+  // fallback metals prices in case fetch fails at server start
+  XAU: 2000,
+  XAG: 25,
+};
 let lastFetch = 0;
 
 /* ===== FETCH LIVE PRICES ===== */
-
 async function fetchPrices() {
   try {
     // Fetch crypto prices from CoinMarketCap
@@ -19,35 +21,32 @@ async function fetchPrices() {
       "https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest",
       {
         params: { symbol: "BTC,ETH,SOL,USDT" },
-        headers: { "X-CMC_PRO_API_KEY": process.env.COINMARKETCAP_API_KEY },
+        headers: {
+          "X-CMC_PRO_API_KEY": process.env.COINMARKETCAP_API_KEY,
+        },
       }
     );
 
-    // Fetch metals prices as before
-    const [goldRes, silverRes] = await Promise.all([
-      axios.get("https://www.goldapi.io/api/XAU/USD", {
-        headers: { "x-access-token": process.env.GOLD_API_KEY },
-      }),
-      axios.get("https://www.goldapi.io/api/XAG/USD", {
-        headers: { "x-access-token": process.env.GOLD_API_KEY },
-      }),
-    ]);
+    const cryptoData = cryptoRes.data.data;
 
-    const prices = {
-      BTC: cryptoRes.data.data.BTC.quote.USD.price,
-      ETH: cryptoRes.data.data.ETH.quote.USD.price,
-      SOL: cryptoRes.data.data.SOL.quote.USD.price,
-      USDT: cryptoRes.data.data.USDT.quote.USD.price,
-      XAU: goldRes.data.price,
-      XAG: silverRes.data.price,
+    // Update cachedPrices while keeping metals unchanged
+    cachedPrices = {
+      BTC: cryptoData.BTC.quote.USD.price,
+      ETH: cryptoData.ETH.quote.USD.price,
+      SOL: cryptoData.SOL.quote.USD.price,
+      USDT: 1,
+      XAU: cachedPrices.XAU,
+      XAG: cachedPrices.XAG,
     };
 
-    cachedPrices = prices;
     lastFetch = Date.now();
+    console.log("Prices Updated:", cachedPrices);
 
-    console.log("Prices Updated:", prices);
   } catch (err) {
-    console.error("Price Fetch Error:", err.message);
+    console.error(
+      "Price Fetch Error:",
+      err.response?.data || err.message
+    );
   }
 }
 
@@ -60,22 +59,22 @@ fetchPrices();
 /* ================= SWAP ================= */
 router.post("/swap", authMiddleware, async (req, res) => {
   try {
-    const { fromAsset, toAsset } = req.body;
-    const amount = Number(req.body.amount);
+    const { fromAsset, toAsset, amount } = req.body;
+    const amt = Number(amount);
 
-    if (!fromAsset || !toAsset || !amount)
+    if (!fromAsset || !toAsset || !amt)
       return res.status(400).json({ message: "Missing data" });
 
     if (fromAsset === toAsset)
       return res.status(400).json({ message: "Cannot swap same asset" });
 
-    if (amount <= 0)
+    if (amt <= 0)
       return res.status(400).json({ message: "Invalid amount" });
 
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    if (!user.balance[fromAsset] || user.balance[fromAsset] < amount)
+    if (!user.balance[fromAsset] || user.balance[fromAsset] < amt)
       return res.status(400).json({ message: "Insufficient balance" });
 
     const prices = cachedPrices;
@@ -84,10 +83,11 @@ router.post("/swap", authMiddleware, async (req, res) => {
       return res.status(400).json({ message: "Invalid asset" });
 
     /* ===== UNIVERSAL CONVERSION ===== */
-    const usdValue = amount * prices[fromAsset];
+    const usdValue = amt * prices[fromAsset];
     const receiveAmount = usdValue / prices[toAsset];
 
-    user.balance[fromAsset] -= amount;
+    // Update user balances
+    user.balance[fromAsset] -= amt;
     user.balance[toAsset] = (user.balance[toAsset] || 0) + receiveAmount;
 
     await user.save();
@@ -100,6 +100,7 @@ router.post("/swap", authMiddleware, async (req, res) => {
       prices,
       lastUpdate: lastFetch,
     });
+
   } catch (err) {
     console.error("Swap Error:", err.message);
     res.status(500).json({ message: "Swap failed" });
