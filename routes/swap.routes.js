@@ -14,28 +14,30 @@ let lastFetch = 0;
 
 async function fetchPrices() {
   try {
-    const [cryptoRes, goldRes, silverRes] = await Promise.all([
-      axios.get("https://api.coingecko.com/api/v3/simple/price", {
-        params: {
-          ids: "bitcoin,ethereum,solana",
-          vs_currencies: "usd",
-        },
-      }),
+    // Fetch crypto prices from CoinMarketCap
+    const cryptoRes = await axios.get(
+      "https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest",
+      {
+        params: { symbol: "BTC,ETH,SOL,USDT" },
+        headers: { "X-CMC_PRO_API_KEY": process.env.COINMARKETCAP_API_KEY },
+      }
+    );
 
+    // Fetch metals prices as before
+    const [goldRes, silverRes] = await Promise.all([
       axios.get("https://www.goldapi.io/api/XAU/USD", {
         headers: { "x-access-token": process.env.GOLD_API_KEY },
       }),
-
       axios.get("https://www.goldapi.io/api/XAG/USD", {
         headers: { "x-access-token": process.env.GOLD_API_KEY },
       }),
     ]);
 
     const prices = {
-      BTC: cryptoRes.data.bitcoin.usd,
-      ETH: cryptoRes.data.ethereum.usd,
-      SOL: cryptoRes.data.solana.usd,
-      USDT: 1,
+      BTC: cryptoRes.data.data.BTC.quote.USD.price,
+      ETH: cryptoRes.data.data.ETH.quote.USD.price,
+      SOL: cryptoRes.data.data.SOL.quote.USD.price,
+      USDT: cryptoRes.data.data.USDT.quote.USD.price,
       XAU: goldRes.data.price,
       XAG: silverRes.data.price,
     };
@@ -50,15 +52,12 @@ async function fetchPrices() {
 }
 
 /* ===== AUTO UPDATE PRICES EVERY 60s ===== */
-
 setInterval(fetchPrices, 60000);
 
 /* ===== INITIAL FETCH WHEN SERVER STARTS ===== */
-
 fetchPrices();
 
 /* ================= SWAP ================= */
-
 router.post("/swap", authMiddleware, async (req, res) => {
   try {
     const { fromAsset, toAsset } = req.body;
@@ -74,9 +73,7 @@ router.post("/swap", authMiddleware, async (req, res) => {
       return res.status(400).json({ message: "Invalid amount" });
 
     const user = await User.findById(req.user.id);
-
-    if (!user)
-      return res.status(404).json({ message: "User not found" });
+    if (!user) return res.status(404).json({ message: "User not found" });
 
     if (!user.balance[fromAsset] || user.balance[fromAsset] < amount)
       return res.status(400).json({ message: "Insufficient balance" });
@@ -87,13 +84,11 @@ router.post("/swap", authMiddleware, async (req, res) => {
       return res.status(400).json({ message: "Invalid asset" });
 
     /* ===== UNIVERSAL CONVERSION ===== */
-
     const usdValue = amount * prices[fromAsset];
     const receiveAmount = usdValue / prices[toAsset];
 
     user.balance[fromAsset] -= amount;
-    user.balance[toAsset] =
-      (user.balance[toAsset] || 0) + receiveAmount;
+    user.balance[toAsset] = (user.balance[toAsset] || 0) + receiveAmount;
 
     await user.save();
 
@@ -105,7 +100,6 @@ router.post("/swap", authMiddleware, async (req, res) => {
       prices,
       lastUpdate: lastFetch,
     });
-
   } catch (err) {
     console.error("Swap Error:", err.message);
     res.status(500).json({ message: "Swap failed" });
