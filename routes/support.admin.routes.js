@@ -16,7 +16,7 @@ const upload = multer({ storage: multer.memoryStorage() });
  */
 router.get("/tickets", verifyAdmin, async (req, res) => {
   const tickets = await SupportTicket.find()
-    .populate("user", "firstname lastname email")
+    .populate("user", "firstName lastName email")
     .sort({ createdAt: -1 });
 
   res.json(tickets);
@@ -29,7 +29,7 @@ router.get("/tickets/:id", verifyAdmin, async (req, res) => {
   try {
     const ticket = await SupportTicket.findById(req.params.id).populate(
       "user",
-      "firstname lastname email"
+      "firstName lastName email"
     );
 
     if (!ticket) return res.status(404).json({ error: "Ticket not found" });
