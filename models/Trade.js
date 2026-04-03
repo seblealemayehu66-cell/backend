@@ -13,6 +13,7 @@ const tradeSchema = new mongoose.Schema({
   percentage: { type: Number, default: 15 },
   status: { type: String, enum: ["pending", "closed"], default: "pending" },
   profitLoss: { type: Number, default: 0 },
+  result: { type: String, enum: ["win", "loss", "pending"], default: "pending" },
   createdAt: { type: Date, default: Date.now },
   closedAt: { type: Date },
 });
