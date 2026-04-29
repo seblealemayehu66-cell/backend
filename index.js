@@ -10,7 +10,7 @@ import adminDepositRoutes from "./routes/adminDeposit.routes.js";
 
 
 
-import swapRoutes from "./routes/swap.routes.js";
+
 
 
 
@@ -125,7 +125,7 @@ app.use("/api/admin/deposits", adminDepositRoutes);
 app.use("/api/coins", coinsRoutes);
 app.use("/api/deposits", depositRoutes);
 app.use("/api/notifications", notificationsRoutes);
-app.use("/api", swapRoutes);
+
 
 
 
