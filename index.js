@@ -48,6 +48,7 @@ import adminKycRoutes from "./routes/adminKyc.routes.js";
 
 
 
+import swapRoutes from "./routes/swap.routes.js";
 
 // Public routes
 import adminWithdrawRoutes from "./routes/admin.withdraw.routes.js";
@@ -128,6 +129,8 @@ app.use("/api/admin/deposits", adminDepositRoutes);
 app.use("/api/coins", coinsRoutes);
 app.use("/api/deposits", depositRoutes);
 app.use("/api/notifications", notificationsRoutes);
+
+app.use("/api/swap", swapRoutes);
 
 
 
