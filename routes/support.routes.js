@@ -1,8 +1,14 @@
+
+
+
+
+
 import express from "express";
 import SupportTicket from "../models/SupportTicket.js";
 import verifyToken from "../middleware/verifyToken.js";
 import multer from "multer";
 import cloudinary from "../config/cloudinary.js";
+import adminAuth from "../middleware/adminAuth.js";
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -87,7 +93,7 @@ router.post(
 );
 
 /* ================= ADMIN - GET ALL TICKETS ================= */
-router.get("/admin/all", verifyToken, async (req, res) => {
+router.get("/admin/all", adminAuth, async (req, res) => {
   try {
     const tickets = await SupportTicket.find()
       .populate("user", "name email")
@@ -100,7 +106,7 @@ router.get("/admin/all", verifyToken, async (req, res) => {
 });
 
 /* ================= ADMIN REPLY ================= */
-router.post("/admin/:ticketId/reply", verifyToken, async (req, res) => {
+router.post("/admin/:ticketId/reply", adminAuth, async (req, res) => {
   try {
     const { message, image } = req.body;
 
@@ -202,7 +208,7 @@ router.put("/admin/:ticketId/message/:messageId", verifyToken, async (req, res) 
     res.status(500).json({ message: "Edit failed" });
   }
 });
-router.delete("/admin/:ticketId/message/:messageId", verifyToken, async (req, res) => {
+router.delete("/admin/:ticketId/message/:messageId", adminAuth, async (req, res) => {
   try {
     const ticket = await SupportTicket.findById(req.params.ticketId);
     if (!ticket) return res.status(404).json({ message: "Ticket not found" });
@@ -221,5 +227,31 @@ router.delete("/admin/:ticketId/message/:messageId", verifyToken, async (req, re
   } catch (err) {
     res.status(500).json({ message: "Delete failed" });
   }
+});
+router.get("/:id", verifyToken, async (req,res)=>{
+
+  try{
+
+    const ticket = await SupportTicket.findById(req.params.id);
+
+
+    if(!ticket){
+      return res.status(404).json({
+        message:"Ticket not found"
+      });
+    }
+
+
+    res.json(ticket);
+
+
+  }catch(error){
+
+    res.status(500).json({
+      message:"Failed loading ticket"
+    });
+
+  }
+
 });
 export default router;
